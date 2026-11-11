@@ -6,6 +6,16 @@ left, one line per song, search (songs, artists, albums, playlists), album
 and artist pages, and a slim player along the bottom. No home feed, nothing
 "made for you".
 
+![Mango showing Liked Songs](docs/screenshot.png)
+
+## Your own Spotify app
+
+Spotify's development mode lets an app be used only by the accounts its
+owner allows, so to build Mango for yourself, create an app at
+developer.spotify.com/dashboard (Web API, redirect URI
+`http://127.0.0.1:46075/callback`) and put its Client ID in `kClientId` in
+`src/app.cpp`. You need Spotify Premium.
+
 ## How it plays
 
 - **Browsing** uses the Spotify Web API, signed in with authorisation code +

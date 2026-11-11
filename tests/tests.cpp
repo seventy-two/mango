@@ -86,14 +86,14 @@ static void testSpotify() {
 
     auto pls = ParsePlaylists(json::parse(R"({
       "items": [{"id": "p1", "uri": "spotify:playlist:p1", "name": "Mine", "collaborative": false,
-                 "owner": {"id": "me", "display_name": "Megz"}, "images": [{"url": "mosaic", "width": null}],
+                 "owner": {"id": "me", "display_name": "Someone"}, "images": [{"url": "mosaic", "width": null}],
                  "items": {"total": 42}},
                 {"id": "p2", "uri": "spotify:playlist:p2", "name": "Old shape", "owner": {"id": "x"},
                  "images": null, "tracks": {"total": 7}}],
       "total": 2, "offset": 0, "next": null
     })"));
     CHECK(pls.items.size() == 2 && !pls.more);
-    CHECK(pls.items[0].total == 42 && pls.items[0].owner == "Megz" && pls.items[0].image == "mosaic");
+    CHECK(pls.items[0].total == 42 && pls.items[0].owner == "Someone" && pls.items[0].image == "mosaic");
     CHECK(pls.items[1].total == 7 && pls.items[1].owner == "x" && pls.items[1].image.empty());
 
     Album al;
