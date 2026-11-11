@@ -19,7 +19,12 @@ and artist pages, and a slim player along the bottom. No home feed, nothing
   expire after 90 days (exit code 10); Mango then fetches the current one.
   Soloist needs its own API key (developer dashboard, Soloist API Key page),
   pasted into Mango and kept DPAPI-encrypted, and is signed in once by
-  picking "Mango" as the device in a Spotify app on the same network. Its
+  picking "Mango" as the device in a Spotify app on the same network. On a
+  PC with Tailscale or WSL, Soloist announces itself (mDNS) on one of those
+  adapters, not Ethernet, so phones never see it: pair from the Spotify
+  desktop app on the same PC instead (worked 11 Nov 2026). It also needs an
+  inbound firewall rule for `soloist.exe` (private networks), which Windows
+  never offers as Soloist runs hidden. Its
   data and log are in `%LOCALAPPDATA%\mango\soloist\`.
 - Starting a song within a playlist/album/Liked Songs goes through the Web
   API's `PUT /me/player/play` with Soloist's device id (Soloist can only
