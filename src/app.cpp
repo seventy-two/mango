@@ -495,12 +495,16 @@ void App::dock() {
     SetWindowPos(hwnd_, nullptr, r.right, r.top, w, r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-void App::Show(bool shown) {
+void App::Show(bool shown, bool activate) {
     if (shown && docked_) {
         dockedTo_ = RECT{};
         dock();
     }
-    if (shown) {
+    if (shown && !activate) {
+        if (IsIconic(hwnd_)) ShowWindow(hwnd_, SW_SHOWNOACTIVATE);
+        ShowWindow(hwnd_, SW_SHOWNA);
+        SetWindowPos(hwnd_, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    } else if (shown) {
         ShowWindow(hwnd_, SW_SHOWNORMAL);
         SetForegroundWindow(hwnd_);
     } else {

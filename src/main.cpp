@@ -196,9 +196,11 @@ LRESULT CALLBACK wndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_APP_TOGGLE:
         // From the launcher's button: shown beside it, hidden again on the
         // next press.
+        // Shown without taking focus, so the launcher's next click (to hide
+        // it again) works first time.
         if (app) {
             if (!IsWindowVisible(h) || IsIconic(h)) app->SetDocked(true);
-            app->Show(!IsWindowVisible(h) || IsIconic(h));
+            app->Show(!IsWindowVisible(h) || IsIconic(h), false);
         }
         return 0;
     case WM_APP_SHOW:
@@ -308,7 +310,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
         ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         UpdateWindow(hwnd);
     } else if (!background || app->Shown()) {
-        app->Show(true);
+        app->Show(true, !docked);  // docked: the launcher keeps focus
         UpdateWindow(hwnd);
     }
 

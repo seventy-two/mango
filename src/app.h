@@ -96,7 +96,8 @@ public:
 
     bool Place(RECT& r) const;
     void SavePlace(const RECT& r);
-    void Show(bool shown);
+    // Show shows or hides the window; activate brings it to the front too.
+    void Show(bool shown, bool activate = true);
     // SetDocked: placed against kitchensink's (the launcher's) right edge,
     // at its height, following it when it moves.
     void SetDocked(bool docked);
