@@ -7,6 +7,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 
@@ -1133,7 +1134,53 @@ void App::Pump() {
     }
 }
 
+// testInput plays MANGO_INPUT, a test script of mouse steps fed to ImGui
+// one per frame ("move x y", "down", "up", "wait n"), so clicks can be
+// tested without the real cursor. Unset, it does nothing.
+static void testInput() {
+    static std::vector<std::string> steps;
+    static size_t next = 0;
+    static int waiting = 0;
+    static bool read = false;
+    if (!read) {
+        read = true;
+        if (const char* s = std::getenv("MANGO_INPUT")) {
+            std::string all = s, cur;
+            for (char ch : all + ";") {
+                if (ch == ';') {
+                    if (!cur.empty()) steps.push_back(cur);
+                    cur.clear();
+                } else {
+                    cur += ch;
+                }
+            }
+        }
+    }
+    static float mx = -1, my = -1;
+    ImGuiIO& io = ImGui::GetIO();
+    // The backend sets the real cursor each frame: put ours back over it.
+    if (mx >= 0) io.AddMousePosEvent(mx, my);
+    if (waiting > 0) {
+        waiting--;
+        return;
+    }
+    if (next >= steps.size()) return;
+    std::string st = steps[next++];
+    float x, y;
+    int n;
+    if (std::sscanf(st.c_str(), " move %f %f", &x, &y) == 2) {
+        mx = x;
+        my = y;
+        io.AddMousePosEvent(x, y);
+    }
+    else if (st.find("down") != std::string::npos) io.AddMouseButtonEvent(0, true);
+    else if (st.find("up") != std::string::npos) io.AddMouseButtonEvent(0, false);
+    else if (std::sscanf(st.c_str(), " wait %d", &n) == 1) waiting = n;
+    Log("input: " + st);
+}
+
 bool App::BeforeFrame() {
+    if (demo_) testInput();
     int add = wantedScripts & ~loadedScripts;
     if (!add) return false;
     auto merge = [&](const char* file) {
@@ -1152,6 +1199,7 @@ bool App::BeforeFrame() {
 }
 
 bool App::Animating() const {
+    if (demo_ && std::getenv("MANGO_INPUT")) return true;
     if (player_.status == "playing" || player_.status == "buffering") return true;
     if (signingIn_ || playlistsLoading_ || (view_ && view_->loading)) return true;
     if (player_.run == PlayerState::Run::Starting) return true;
@@ -1471,8 +1519,10 @@ static bool listRow(const char* id, float width, float h, bool selected, ImVec2&
     ImGui::PushID(id);
     ImGui::SetNextItemAllowOverlap();
     bool clicked = ImGui::InvisibleButton("##row", ImVec2(width, h), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
-    // Still hovered under the row's own buttons (play), or it flickers.
-    bool hov = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenOverlappedByItem);
+    // Still hovered under the row's own buttons (play), and while one is
+    // held down: otherwise the button vanishes mid-click and never fires.
+    bool hov = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenOverlappedByItem |
+                                    ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
     if (rightClicked) *rightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
     if (doubleClicked) *doubleClicked = hov && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
     ImGui::PopID();

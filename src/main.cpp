@@ -97,9 +97,10 @@ void renderFrame() {
         resizeW = resizeH = 0;
         createTarget();
     }
-    if (app->BeforeFrame()) framesWanted = 3;
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
+    // After the backend, so a test's scripted mouse (MANGO_INPUT) wins.
+    if (app->BeforeFrame()) framesWanted = 3;
     ImGui::NewFrame();
     app->Frame();
     ImGui::Render();

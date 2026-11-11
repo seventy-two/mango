@@ -72,3 +72,6 @@ title bar's close quits.
 Testing: `MANGO_DATA=<folder>` uses its own config and runs beside the real
 one without taking focus; `MANGO_DEMO=1` fills it with made-up music and
 touches no network (`q` opens Up next); `-place x,y,w,h` sets the window.
+With `MANGO_DEMO`, `MANGO_INPUT` plays a mouse script, one step a frame
+(`wait 20;move 266 150;down;wait 3;up`), for testing clicks without the
+real cursor; plays are logged to `mango.log` in the data folder.
