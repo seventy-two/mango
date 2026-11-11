@@ -11,6 +11,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <set>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -143,7 +144,8 @@ private:
 
     // Playback.
     void playIn(const View& v, int index);
-    void playContext(const std::string& contextUri, bool shuffle);
+    // shuffle: 1 on, 0 off, -1 as it is.
+    void playContext(const std::string& contextUri, int shuffle = -1);
     void playUris(std::vector<std::string> uris, std::string offsetUri);
     void togglePlay();
     void checkLiked(const std::string& uri);
@@ -215,6 +217,11 @@ private:
     bool volumeDragging_ = false;
     int volumeShown_ = 40;
     std::string lastQueueFor_;
+    // Autoplay: Spotify carrying on with similar songs after a playlist or
+    // album ends, while still reporting it as what's playing.
+    std::set<std::string> autoplayUris_;  // songs the queue has called autoplay
+    bool autoplaying_ = false;
+    bool isAutoplay(const std::string& uri) const;
 
     std::string note_;
     double noteUntil_ = 0;

@@ -41,6 +41,11 @@ developer.spotify.com/dashboard (Web API, redirect URI
   start a whole context); pause, skip, seek, volume, shuffle, repeat and
   the queue go straight to Soloist.
 
+When a playlist or album ends, Spotify's autoplay carries on with similar
+songs while still reporting the playlist as playing; Mango marks those
+songs AUTOPLAY in the player and Up next. Double-click a playlist on the
+left to play it.
+
 Spotify's development-mode limits (February 2026): search returns 10 a page
 per type, and only playlists you own or collaborate on list their songs;
 others can still be played.
@@ -71,7 +76,7 @@ title bar's close quits.
 
 Testing: `MANGO_DATA=<folder>` uses its own config and runs beside the real
 one without taking focus; `MANGO_DEMO=1` fills it with made-up music and
-touches no network (`q` opens Up next); `-place x,y,w,h` sets the window.
+touches no network (`q` opens Up next, `a` shows autoplay); `-place x,y,w,h` sets the window.
 With `MANGO_DEMO`, `MANGO_INPUT` plays a mouse script, one step a frame
 (`wait 20;move 266 150;down;wait 3;up`), for testing clicks without the
 real cursor; plays are logged to `mango.log` in the data folder.

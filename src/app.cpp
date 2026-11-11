@@ -396,6 +396,18 @@ void App::demo() {
         q.item.creators = {{"spotify:artist:x", bands[i]}};
         player_.upcoming.push_back(q);
     }
+    if (_wgetenv(L"MANGO_DEMO")[0] == L'a') {
+        // Autoplay: a song not in Liked Songs, and Spotify's picks queued.
+        cfg_.queueOpen = true;
+        player_.item.uri = "spotify:track:autoplay";
+        player_.item.name = "Somewhere Similar";
+        for (size_t i = 0; i < player_.upcoming.size(); i++) {
+            player_.upcoming[i].item.uri = "spotify:track:u" + std::to_string(i);
+            if (i >= 2) player_.upcoming[i].source = "autoplay";
+        }
+        for (const auto& q : player_.upcoming)
+            if (q.source == "autoplay") autoplayUris_.insert(q.item.uri);
+    }
     likedUri_ = player_.item.uri;
     likedState_ = 1;
 }
@@ -1011,13 +1023,14 @@ void App::playUris(std::vector<std::string> uris, std::string offsetUri) {
     });
 }
 
-void App::playContext(const std::string& contextUri, bool shuffle) {
+void App::playContext(const std::string& contextUri, int shuffle) {
     if (!player_.loggedIn) {
         note("Mango's player isn't connected yet: see the card at the top.");
         return;
     }
     std::string ctx = contextUri;
-    soloist_->SetShuffle(shuffle);
+    Log("playContext " + ctx + " shuffle " + std::to_string(shuffle));
+    if (shuffle >= 0) soloist_->SetShuffle(shuffle == 1);
     auto api = api_;
     auto sol = soloist_;
     auto dc = devices;
@@ -1051,6 +1064,26 @@ void App::MediaKey(int id) {
         if (media_) soloist_->Seek(media_->SeekTarget());
         break;
     }
+}
+
+// isAutoplay: the song was queued as autoplay, or it isn't in the playlist
+// or album being played (when Mango has that list in full).
+bool App::isAutoplay(const std::string& uri) const {
+    if (uri.empty() || player_.context.uri.empty()) return false;
+    if (autoplayUris_.count(uri)) return true;
+    const std::string& ctx = player_.context.uri;
+    std::string key;
+    if (uriIs(ctx, "playlist")) key = "playlist:" + idOf(ctx);
+    else if (uriIs(ctx, "album")) key = "album:" + idOf(ctx);
+    else if (ctx.size() > 11 && ctx.compare(ctx.size() - 11, 11, ":collection") == 0) key = "liked";
+    else return false;
+    auto it = cache_.find(key);
+    if (it == cache_.end()) return false;
+    const View& v = *it->second;
+    if (!v.done || v.notListed || v.tracks.empty() || !v.error.empty()) return false;
+    for (const auto& t : v.tracks)
+        if (t.uri == uri) return false;
+    return true;
 }
 
 void App::checkLiked(const std::string& uri) {
@@ -1119,6 +1152,9 @@ void App::Pump() {
         noteText(player_.item.parentName);
         for (const auto& c : player_.item.creators) noteText(c.second);
         for (const auto& q : player_.upcoming) noteText(q.item.name);
+        for (const auto& q : player_.upcoming)
+            if (q.source == "autoplay" && !q.item.uri.empty()) autoplayUris_.insert(q.item.uri);
+        if (autoplayUris_.size() > 500) autoplayUris_.clear();
         if (player_.item.uri != before) {
             checkLiked(player_.item.uri);
             if (cfg_.queueOpen && player_.loggedIn) soloist_->AskQueue(50);
@@ -1130,6 +1166,7 @@ void App::Pump() {
             devices->id.clear();
         }
     }
+    autoplaying_ = isAutoplay(player_.item.uri);
     if (media_) media_->Update(player_);
     // Docked, follow kitchensink if it moves or changes size.
     if (docked_ && IsWindowVisible(hwnd_) && !IsIconic(hwnd_) && GetTickCount64() - dockChecked_ > 500) {
@@ -1162,6 +1199,7 @@ static void testInput() {
     }
     static float mx = -1, my = -1;
     ImGuiIO& io = ImGui::GetIO();
+    if (!steps.empty()) io.MouseDoubleClickTime = 3.0f;  // scripted frames are slow
     // The backend sets the real cursor each frame: put ours back over it.
     if (mx >= 0) io.AddMousePosEvent(mx, my);
     if (waiting > 0) {
@@ -1548,11 +1586,13 @@ void App::drawSidebar(float x, float y, float w, float h) {
     }
     const float rowH = kRowH * k, pad = 4 * k, rw = w - 2 * pad - ImGui::GetStyle().ScrollbarSize * 0.5f;
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    const std::string& ctx = player_.context.uri;
+    // While autoplay carries on past it, a playlist isn't marked as playing.
+    const std::string ctx = autoplaying_ ? std::string() : player_.context.uri;
     auto row = [&](const char* id, const char* glyph, const std::string& name, const std::string& count, bool selected,
                    bool playing) {
         ImVec2 a;
-        bool clicked = listRow(id, rw, rowH, selected, a);
+        bool dbl = false;
+        bool clicked = listRow(id, rw, rowH, selected, a, nullptr, &dbl);
         if (selected) dl->AddRectFilled(a, ImVec2(a.x + 2 * k, a.y + rowH), col(p.accent));
         ImGui::PushFont(regular_, kSmall + 0.5f);
         float fy = a.y + (rowH - ImGui::GetFontSize()) / 2;
@@ -1572,7 +1612,7 @@ void App::drawSidebar(float x, float y, float w, float h) {
         }
         textAt(ImVec2(tx, fy), name, playing ? p.accent : selected ? p.text : p.text, right - tx);
         ImGui::PopFont();
-        return clicked;
+        return dbl ? 2 : clicked ? 1 : 0;  // double-click plays it
     };
 
     ImGui::SetCursorPos(ImVec2(pad, 6 * k));
@@ -1581,9 +1621,10 @@ void App::drawSidebar(float x, float y, float w, float h) {
     {
         auto lv = cached("liked");
         bool playingLiked = ctx.size() > 11 && ctx.compare(ctx.size() - 11, 11, ":collection") == 0;
-        if (row("liked", icon::HeartFill, "Liked Songs", lv && lv->total ? std::to_string(lv->total) : "",
-                view_ && view_->key == "liked", playingLiked))
-            openLiked();
+        int r = row("liked", icon::HeartFill, "Liked Songs", lv && lv->total ? std::to_string(lv->total) : "",
+                    view_ && view_->key == "liked", playingLiked);
+        if (r) openLiked();
+        if (r == 2 && !meId_.empty()) playContext("spotify:user:" + meId_ + ":collection");
     }
     ImGui::Dummy(ImVec2(0, 10 * k));
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 10 * k);
@@ -1605,8 +1646,9 @@ void App::drawSidebar(float x, float y, float w, float h) {
     for (const auto& pl : playlists_) {
         bool sel = view_ && view_->key == "playlist:" + pl.id;
         bool mine = pl.ownerId.empty() || pl.ownerId == meId_ || pl.collaborative;
-        if (row(pl.id.c_str(), nullptr, pl.name, mine ? std::to_string(pl.total) : "", sel, !ctx.empty() && ctx == pl.uri))
-            openPlaylist(pl);
+        int r = row(pl.id.c_str(), nullptr, pl.name, mine ? std::to_string(pl.total) : "", sel, !ctx.empty() && ctx == pl.uri);
+        if (r) openPlaylist(pl);
+        if (r == 2) playContext(pl.uri);
         if (!mine && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) ImGui::SetTooltip("by %s", pl.owner.c_str());
     }
     ImGui::PopStyleVar();
@@ -1674,7 +1716,7 @@ void App::drawHeader(View& v, float width) {
     if (iconButton(isPlaying ? icon::Pause : icon::Play, isPlaying ? "Pause" : "Play", true, 28)) {
         if (playingThis) togglePlay();
         else if (v.kind == Kind::Liked && !v.tracks.empty()) playIn(v, 0);
-        else playContext(ctx, false);
+        else playContext(ctx);
     }
     ImGui::SameLine(0, 0);
     if (iconButton(icon::Shuffle, "Shuffle play", false, 28)) {
@@ -1682,7 +1724,7 @@ void App::drawHeader(View& v, float width) {
             soloist_->SetShuffle(true);
             playIn(v, int(GetTickCount64() % v.tracks.size()));
         } else {
-            playContext(ctx, true);
+            playContext(ctx, 1);
         }
     }
     ImGui::EndDisabled();
@@ -1953,7 +1995,7 @@ void App::drawCards(const std::vector<Album>* albums, const std::vector<Artist>*
         if (hovered) {
             ImGui::SetCursorScreenPos(ImVec2(a.x + 2 * k, a.y + (rowH - 22 * k) / 2));
             if (iconButton(icon::Play, "Play", false, 25)) {
-                playContext(uri, false);
+                playContext(uri);
                 played = true;
             }
         } else if (!uri.empty() && uri == player_.context.uri) {
@@ -2046,8 +2088,18 @@ void App::drawQueue(float x, float y, float w, float h) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     (void)dl;
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 0));
+    bool autoplayShown = false;
     for (size_t i = 0; i < player_.upcoming.size(); i++) {
         const auto& q = player_.upcoming[i];
+        if (q.source == "autoplay" && !autoplayShown) {
+            // Spotify's own picks start here.
+            autoplayShown = true;
+            ImGui::Dummy(ImVec2(0, 6 * k));
+            ImGui::PushFont(semibold_, kLabel);
+            ImGui::TextColored(p.mango, "AUTOPLAY");
+            ImGui::PopFont();
+            ImGui::Dummy(ImVec2(0, 2 * k));
+        }
         ImVec2 a = ImGui::GetCursorScreenPos();
         std::string who;
         for (const auto& c : q.item.creators) who += (who.empty() ? "" : ", ") + c.second;
@@ -2101,6 +2153,15 @@ void App::drawPlayer(float x, float y, float w, float h) {
         if (link(ellipsize(it.name, tw), p.text, semibold_, kSmall + 0.5f) && uriIs(it.parentUri, "album"))
             openAlbum(idOf(it.parentUri), it.parentName);
         ImGui::SetCursorScreenPos(ImVec2(tx, y + 24 * k));
+        if (autoplaying_) {
+            ImGui::PushFont(semibold_, kLabel - 0.5f);
+            ImGui::TextColored(p.mango, "AUTOPLAY");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("The playlist or album has ended; Spotify is carrying on with similar songs.");
+            ImGui::PopFont();
+            ImGui::SameLine(0, 6 * k);
+            ImGui::SetCursorScreenPos(ImVec2(ImGui::GetCursorScreenPos().x, y + 24 * k));
+        }
         std::vector<Ref> artists;
         for (const auto& c : it.creators) artists.push_back({idOf(c.first), c.first, c.second});
         ImGui::PushClipRect(ImVec2(tx, y), ImVec2(tx + tw, y + h), true);
