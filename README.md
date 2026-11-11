@@ -1,7 +1,7 @@
 # Mango
 
 A small, compact Spotify player for Windows: C++, Win32 + Direct3D 11 + Dear
-ImGui, styled like kitchensink. Your playlists and Liked Songs down the
+ImGui: dark, flat and square. Your playlists and Liked Songs down the
 left, one line per song, search (songs, artists, albums, playlists), album
 and artist pages, and a slim player along the bottom. No home feed, nothing
 "made for you".
@@ -52,20 +52,22 @@ Ctrl+L search · Ctrl+F filter · Enter play selected · Alt+Left or mouse back
 button: back · F5 reload.
 
 Mango registers with Windows' media controls (SMTC): what's playing shows
-in the volume overlay and anything reading media sessions (kitchensink's
-Now playing), and the media keys reach it when it's the current player.
+in the volume overlay and anything reading media sessions, and the media
+keys reach it when it's the current player.
 
-## kitchensink
+## Window
 
-Mango is hidden and shown by the mango on kitchensink's title bar (window
-class `mango`, message `WM_APP + 2`), like Lick of the Day. Hiding keeps the
-music playing; the title bar's close quits.
+On its own Mango is an ordinary window with a taskbar button. Started with
+`-docked` (by a launcher app), it has no taskbar button, minimising hides
+it (the music carries on), and it sits against the right edge of the
+window of class `kitchensink`, at its height, following it as it moves.
+`WM_APP + 2` sent to Mango's window (class `mango`) toggles it that way. The
+title bar's close quits.
 
 ## Building
 
 `build.bat` (Visual Studio 2022 C++ tools) builds `build\mango.exe` and runs
-`build\tests.exe`. Built with `/DNDEBUG`. `tools/icon.py` draws `src/app.ico`;
-`tools/flat.py` previews kitchensink's flat mango.
+`build\tests.exe`. Built with `/DNDEBUG`. `tools/icon.py` draws `src/app.ico`.
 
 Testing: `MANGO_DATA=<folder>` uses its own config and runs beside the real
 one without taking focus; `MANGO_DEMO=1` fills it with made-up music and

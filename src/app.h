@@ -97,6 +97,9 @@ public:
     bool Place(RECT& r) const;
     void SavePlace(const RECT& r);
     void Show(bool shown);
+    // SetDocked: placed against kitchensink's (the launcher's) right edge,
+    // at its height, following it when it moves.
+    void SetDocked(bool docked);
     bool Shown() const { return cfg_.shown; }
     void MediaKey(int id);
 
@@ -110,6 +113,7 @@ private:
         int volume = 40;
         bool queueOpen = false;
         std::string lastView;    // key
+        int dockedW = 0;         // width when docked
     };
 
     // Setup and data.
@@ -167,6 +171,10 @@ private:
 
     HWND hwnd_;
     bool demo_ = false;
+    bool docked_ = false;
+    RECT dockedTo_{};       // the launcher's rectangle last docked to
+    double dockChecked_ = 0;
+    void dock();
     std::function<void()> wake_;
     std::shared_ptr<Inbox> inbox_;
     Workers workers_;

@@ -116,8 +116,9 @@ public:
     bool Devices(std::vector<Device>& out, std::string& error);
     // Play starts a context (album/playlist/collection) at a track, or a
     // list of tracks, on the given device.
+    // offsetPosition (0-based), when not -1, is used instead of offsetUri.
     bool Play(const std::string& deviceId, const std::string& contextUri, const std::string& offsetUri,
-              const std::vector<std::string>& uris, std::string& error);
+              const std::vector<std::string>& uris, std::string& error, int offsetPosition = -1);
     // Saved checks which of up to 40 URIs are in the library.
     bool Saved(const std::vector<std::string>& uris, std::vector<bool>& out, std::string& error);
     bool SetSaved(const std::string& uri, bool saved, std::string& error);

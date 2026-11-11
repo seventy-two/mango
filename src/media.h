@@ -1,5 +1,5 @@
 // Windows' media controls (SMTC): tells Windows what Mango is playing, so
-// it shows in the volume overlay, kitchensink's Now playing and the like,
+// it shows in the volume overlay and anything else reading media sessions,
 // and takes the keyboard's media keys when Mango is the current player.
 #pragma once
 

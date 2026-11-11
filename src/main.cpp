@@ -1,7 +1,8 @@
 // mango: a small Spotify client. Browses playlists, Liked Songs, albums and
 // search through the Web API and plays through Spotify Soloist, run hidden.
-// Drawn with Dear ImGui on Direct3D 11, frameless like kitchensink, and
-// hidden or shown by a button on kitchensink's title bar.
+// Drawn with Dear ImGui on Direct3D 11, frameless. It has no taskbar
+// button: minimising hides it, and starting it again (or WM_APP + 2 from
+// another app) shows it.
 #include <windows.h>
 #include <d3d11.h>
 #include <dwmapi.h>
@@ -23,7 +24,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 namespace {
 
 constexpr UINT WM_APP_WAKE = WM_APP + 1;
-// Sent by kitchensink's button (and a second start) to hide or show it.
+// Sent by another app (a launcher button) to hide or show it.
 constexpr UINT WM_APP_TOGGLE = WM_APP + 2;
 constexpr UINT WM_APP_SHOW = WM_APP + 3;
 const wchar_t* kClassName = L"mango";
@@ -35,6 +36,7 @@ ID3D11RenderTargetView* target = nullptr;
 UINT resizeW = 0, resizeH = 0;
 
 HWND hwnd = nullptr;
+bool docked = false;
 std::unique_ptr<mango::App> app;
 int framesWanted = 2;
 bool dark = true;
@@ -180,8 +182,9 @@ LRESULT CALLBACK wndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) {
         if (lParam && wcscmp(reinterpret_cast<const wchar_t*>(lParam), L"ImmersiveColorSet") == 0) applyTheme();
         return 0;
     case WM_SYSCOMMAND:
-        // It has no taskbar button to come back from, so minimising hides it.
-        if ((wParam & 0xFFF0) == SC_MINIMIZE) {
+        // Docked, it has no taskbar button to come back from, so minimising
+        // hides it.
+        if ((wParam & 0xFFF0) == SC_MINIMIZE && docked) {
             if (app) app->Show(false);
             return 0;
         }
@@ -190,10 +193,18 @@ LRESULT CALLBACK wndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) {
         if (app) app->MediaKey(int(wParam));
         return 0;
     case WM_APP_TOGGLE:
-        if (app) app->Show(!IsWindowVisible(h));
+        // From the launcher's button: shown beside it, hidden again on the
+        // next press.
+        if (app) {
+            if (!IsWindowVisible(h) || IsIconic(h)) app->SetDocked(true);
+            app->Show(!IsWindowVisible(h) || IsIconic(h));
+        }
         return 0;
     case WM_APP_SHOW:
-        if (app) app->Show(true);
+        if (app) {
+            if (wParam) app->SetDocked(true);
+            app->Show(true);
+        }
         return 0;
     case WM_DESTROY: PostQuitMessage(0); return 0;
     }
@@ -203,9 +214,12 @@ LRESULT CALLBACK wndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
-    // -background (kitchensink starting it) stays hidden if it was hidden;
+    // -background (started by another app) stays hidden if it was hidden;
     // any other start shows it.
     bool background = wcsstr(cmdLine, L"-background") != nullptr;
+    // -docked: started by a launcher (kitchensink): no taskbar button, and
+    // the window sits against the launcher's right edge.
+    docked = wcsstr(cmdLine, L"-docked") != nullptr;
     // MANGO_DATA (tests) keeps a separate config and runs beside the real
     // one; such windows never take focus. -place x,y,w,h puts the window.
     std::wstring mutexName = L"Local\\mango";
@@ -228,7 +242,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
         if (HWND other = FindWindowW(kClassName, nullptr); other && !background && !testing) {
             AllowSetForegroundWindow(ASFW_ANY);
-            PostMessageW(other, WM_APP_SHOW, 0, 0);
+            PostMessageW(other, WM_APP_SHOW, docked ? 1 : 0, 0);
         }
         return 0;
     }
@@ -253,15 +267,16 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     GetMonitorInfoW(MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY), &mi);
     int w = int(960 * scale), h = int(600 * scale);
     int x = (mi.rcWork.left + mi.rcWork.right - w) / 2, y = (mi.rcWork.top + mi.rcWork.bottom - h) / 2;
-    // Owned by a hidden window, so it has no taskbar button (kitchensink's
-    // button hides and shows it) but is still an ordinary window, which
-    // FancyZones and the like will snap; a tool window they leave alone.
+    // Docked, it's owned by a hidden window, so it has no taskbar button
+    // (the launcher's button hides and shows it) but is still an ordinary
+    // window; a tool window would be left out by window snappers.
     WNDCLASSEXW oc{sizeof(oc)};
     oc.lpfnWndProc = DefWindowProcW;
     oc.hInstance = instance;
     oc.lpszClassName = L"mango-owner";
     RegisterClassExW(&oc);
-    HWND owner = CreateWindowExW(0, oc.lpszClassName, L"", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr, instance, nullptr);
+    HWND owner = docked ? CreateWindowExW(0, oc.lpszClassName, L"", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr, instance, nullptr)
+                        : nullptr;
     hwnd = CreateWindowExW(0, kClassName, L"Mango", WS_OVERLAPPEDWINDOW, x, y, w, h, owner, nullptr, instance,
                            nullptr);
     MARGINS margins{0, 0, 0, 1};
@@ -282,9 +297,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR cmdLine, int) {
     app = std::make_unique<mango::App>(hwnd, device, [] { PostMessageW(hwnd, WM_APP_WAKE, 0, 0); });
     app->SetScale(ImGui_ImplWin32_GetDpiScaleForHwnd(hwnd));
     applyTheme();
+    app->SetDocked(docked);
     RECT placed;
     if (force) placed = forced;
-    if (force || app->Place(placed))
+    if (force || (!docked && app->Place(placed)))
         SetWindowPos(hwnd, nullptr, placed.left, placed.top, placed.right - placed.left, placed.bottom - placed.top,
                      SWP_NOZORDER | SWP_NOACTIVATE);
     if (testing) {

@@ -36,6 +36,10 @@ std::string LongDuration(int64_t ms);
 // NowMs is the wall clock in Unix milliseconds.
 int64_t NowMs();
 
+// Log appends a timestamped line to mango.log (set its folder first).
+void SetLogDir(const std::string& dir);
+void Log(const std::string& line);
+
 // Lower folds ASCII letters; enough for matching.
 std::string Lower(std::string s);
 

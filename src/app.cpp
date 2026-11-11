@@ -31,7 +31,7 @@ ImVec4 hex(unsigned rgb, float a = 1.0f) {
     return ImVec4(((rgb >> 16) & 0xFF) / 255.0f, ((rgb >> 8) & 0xFF) / 255.0f, (rgb & 0xFF) / 255.0f, a);
 }
 
-// kitchensink's colours, plus mango for the name.
+// A dark blue-grey palette with one blue accent, plus mango for the name.
 struct Palette {
     ImVec4 bg, card, sidebar, border, text, muted, faint, accent, hover, frame, accentText, warn, bad, mango;
 };
@@ -258,6 +258,8 @@ App::App(HWND hwnd, ID3D11Device* device, std::function<void()> wake)
     }
     std::error_code ec;
     fs::create_directories(fs::u8path(dir_), ec);
+    SetLogDir(dir_);
+    Log("start");
     loadConfig();
     volumeShown_ = cfg_.volume;
 
@@ -426,6 +428,7 @@ void App::loadConfig() {
         cfg_.volume = std::clamp(j.value("volume", 40), 0, 100);
         cfg_.queueOpen = j.value("queueOpen", false);
         cfg_.lastView = j.value("lastView", "");
+        cfg_.dockedW = j.value("dockedW", 0);
     } catch (...) {
     }
 }
@@ -440,6 +443,7 @@ void App::saveConfig() {
     j["volume"] = cfg_.volume;
     j["queueOpen"] = cfg_.queueOpen;
     j["lastView"] = cfg_.lastView;
+    if (cfg_.dockedW > 0) j["dockedW"] = cfg_.dockedW;
     fs::path tmp = fs::u8path(dir_) / "config.json.tmp";
     {
         std::ofstream out(tmp);
@@ -456,6 +460,14 @@ bool App::Place(RECT& r) const {
 }
 
 void App::SavePlace(const RECT& r) {
+    if (docked_) {
+        // Only the width is Mango's to choose; it stays against the edge.
+        cfg_.dockedW = r.right - r.left;
+        saveConfig();
+        dockedTo_ = RECT{};
+        dock();
+        return;
+    }
     cfg_.placed = true;
     cfg_.x = r.left;
     cfg_.y = r.top;
@@ -464,7 +476,29 @@ void App::SavePlace(const RECT& r) {
     saveConfig();
 }
 
+void App::SetDocked(bool docked) {
+    docked_ = docked;
+    dockedTo_ = RECT{};
+}
+
+// dock puts the window against kitchensink's right edge, at its top and
+// height, if kitchensink is showing and has moved since last time.
+void App::dock() {
+    HWND ks = FindWindowW(L"kitchensink", nullptr);
+    if (!ks || !IsWindowVisible(ks) || IsIconic(ks)) return;
+    RECT r;
+    if (!GetWindowRect(ks, &r)) return;
+    if (EqualRect(&r, &dockedTo_)) return;
+    dockedTo_ = r;
+    int w = cfg_.dockedW > 0 ? cfg_.dockedW : int(900 * scale_);
+    SetWindowPos(hwnd_, nullptr, r.right, r.top, w, r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 void App::Show(bool shown) {
+    if (shown && docked_) {
+        dockedTo_ = RECT{};
+        dock();
+    }
     if (shown) {
         ShowWindow(hwnd_, SW_SHOWNORMAL);
         SetForegroundWindow(hwnd_);
@@ -908,12 +942,19 @@ void App::playIn(const View& v, int index) {
         return;
     }
     std::string ctx = v.contextUri;
-    if (v.kind == Kind::Liked && !meId_.empty()) ctx = "spotify:user:" + meId_ + ":collection";
+    // Liked Songs as a context starts at a position; Spotify sometimes
+    // ignores a song given by URI there and starts at the top.
+    int position = -1;
+    if (v.kind == Kind::Liked && !meId_.empty()) {
+        ctx = "spotify:user:" + meId_ + ":collection";
+        position = index;
+    }
     if (v.kind == Kind::Search || v.kind == Kind::Artist) ctx.clear();
     // Also a plain list from this song on, in case the context won't take.
     std::vector<std::string> uris;
     for (int i = index; i < int(v.tracks.size()) && uris.size() < 100; i++)
         if (v.tracks[i].playable && !v.tracks[i].uri.empty()) uris.push_back(v.tracks[i].uri);
+    Log("playIn " + v.key + " #" + std::to_string(index) + " " + t.uri + " ctx " + ctx);
     if (ctx.empty()) {
         playUris(uris, "");
         return;
@@ -925,17 +966,22 @@ void App::playIn(const View& v, int index) {
     auto api = api_;
     auto sol = soloist_;
     auto dc = devices;
+    auto inbox = inbox_;
     std::string offset = t.uri;
-    workers_.Run([api, sol, dc, ctx, offset, uris] {
+    workers_.Run([api, sol, dc, inbox, ctx, offset, position, uris, this] {
         std::string err;
         std::string id = findDevice(*api, *sol, *dc, false, err);
-        bool ok = !id.empty() && api->Play(id, ctx, offset, {}, err);
+        bool ok = !id.empty() && api->Play(id, ctx, offset, {}, err, position);
         if (!ok && !id.empty()) {
             // A stale device id, or a context Spotify won't start at a song.
             id = findDevice(*api, *sol, *dc, true, err);
-            ok = !id.empty() && (api->Play(id, ctx, offset, {}, err) || api->Play(id, "", "", uris, err));
+            ok = !id.empty() && (api->Play(id, ctx, offset, {}, err, position) || api->Play(id, "", "", uris, err));
         }
-        if (!ok) sol->Play(offset);
+        if (!ok) {
+            Log("play failed (" + err + "); asking Soloist for the song alone");
+            sol->Play(offset);
+            inbox->Post([this, err] { note("Spotify wouldn't start it in place (" + err + "); playing the song alone"); });
+        }
     });
 }
 
@@ -989,7 +1035,7 @@ void App::togglePlay() {
 }
 
 // MediaKey handles a button from Windows' media controls (media keys, the
-// volume overlay, kitchensink's Now playing).
+// volume overlay, other apps' media controls).
 void App::MediaKey(int id) {
     switch (id) {
     case MediaPlay: soloist_->Play(); break;
@@ -1080,6 +1126,11 @@ void App::Pump() {
         }
     }
     if (media_) media_->Update(player_);
+    // Docked, follow kitchensink if it moves or changes size.
+    if (docked_ && IsWindowVisible(hwnd_) && !IsIconic(hwnd_) && GetTickCount64() - dockChecked_ > 500) {
+        dockChecked_ = double(GetTickCount64());
+        dock();
+    }
 }
 
 bool App::BeforeFrame() {
@@ -1270,7 +1321,7 @@ void App::artistLinks(const std::vector<Ref>& artists, ImVec4 colour, float px) 
     }
 }
 
-// Layout: compact, like kitchensink. One line per song, playlist, album
+// Layout: compact. One line per song, playlist, album
 // and artist; no artwork in lists; a slim header and player.
 namespace {
 constexpr float kRowH = 26;     // a list row
@@ -1372,7 +1423,10 @@ void App::drawTitle(float width) {
     ImGui::SetCursorPos(ImVec2(width - 3 * 28 * k - 4 * k, 5 * k));
     if (iconButton(icon::Settings, "Settings", false, 28)) ImGui::OpenPopup("##settings");
     ImGui::SameLine(0, 0);
-    if (iconButton(icon::Minimise, "Hide (the music keeps playing)", false, 28)) Show(false);
+    if (iconButton(icon::Minimise, docked_ ? "Hide (the music keeps playing)" : "Minimise", false, 28)) {
+        if (docked_) Show(false);
+        else ShowWindow(hwnd_, SW_MINIMIZE);
+    }
     ImGui::SameLine(0, 0);
     if (iconButton(icon::Close, "Quit Mango (stops the music)", false, 28, true)) PostMessageW(hwnd_, WM_CLOSE, 0, 0);
 

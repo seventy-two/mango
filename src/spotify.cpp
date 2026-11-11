@@ -357,14 +357,16 @@ bool Api::Devices(std::vector<Device>& out, std::string& error) {
 }
 
 bool Api::Play(const std::string& deviceId, const std::string& contextUri, const std::string& offsetUri,
-               const std::vector<std::string>& uris, std::string& error) {
+               const std::vector<std::string>& uris, std::string& error, int offsetPosition) {
     json body = json::object();
     if (!contextUri.empty()) body["context_uri"] = contextUri;
     else if (!uris.empty()) body["uris"] = uris;
-    if (!offsetUri.empty()) body["offset"] = {{"uri", offsetUri}};
+    if (offsetPosition >= 0) body["offset"] = {{"position", offsetPosition}};
+    else if (!offsetUri.empty()) body["offset"] = {{"uri", offsetUri}};
     std::string path = "/me/player/play";
     if (!deviceId.empty()) path += "?device_id=" + UrlEncode(deviceId);
     auto r = Call("PUT", path, body.dump());
+    Log("play " + body.dump() + " -> " + std::to_string(r.status) + (r.ok ? "" : " " + r.error));
     if (!r.ok) return error = r.error, false;
     return true;
 }

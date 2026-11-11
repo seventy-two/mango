@@ -5,6 +5,7 @@
 #include <dpapi.h>
 
 #include <cstdio>
+#include <mutex>
 
 namespace mango {
 
@@ -175,6 +176,30 @@ int64_t NowMs() {
     GetSystemTimePreciseAsFileTime(&ft);
     ULARGE_INTEGER u{ft.dwLowDateTime, ft.dwHighDateTime};
     return int64_t(u.QuadPart / 10000) - 11644473600000LL;
+}
+
+static std::mutex logMu;
+static std::string logPath;
+
+void SetLogDir(const std::string& dir) {
+    std::lock_guard<std::mutex> lock(logMu);
+    logPath = dir + "\\mango.log";
+    // Keep it small: start again past 1 MB.
+    WIN32_FILE_ATTRIBUTE_DATA a;
+    if (GetFileAttributesExW(Widen(logPath).c_str(), GetFileExInfoStandard, &a) && a.nFileSizeLow > (1u << 20))
+        DeleteFileW(Widen(logPath).c_str());
+}
+
+void Log(const std::string& line) {
+    std::lock_guard<std::mutex> lock(logMu);
+    if (logPath.empty()) return;
+    FILE* f = _wfopen(Widen(logPath).c_str(), L"ab");
+    if (!f) return;
+    SYSTEMTIME t;
+    GetLocalTime(&t);
+    std::fprintf(f, "%04d-%02d-%02d %02d:%02d:%02d.%03d %s\r\n", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond,
+                 t.wMilliseconds, line.c_str());
+    std::fclose(f);
 }
 
 std::string Lower(std::string s) {
