@@ -1430,7 +1430,8 @@ static bool listRow(const char* id, float width, float h, bool selected, ImVec2&
     ImGui::PushID(id);
     ImGui::SetNextItemAllowOverlap();
     bool clicked = ImGui::InvisibleButton("##row", ImVec2(width, h), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
-    bool hov = ImGui::IsItemHovered();
+    // Still hovered under the row's own buttons (play), or it flickers.
+    bool hov = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenOverlappedByItem);
     if (rightClicked) *rightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
     if (doubleClicked) *doubleClicked = hov && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
     ImGui::PopID();
@@ -1543,7 +1544,7 @@ void App::drawMain(float x, float y, float w, float h) {
                 else if (v.loading) ImGui::TextColored(pal->muted, "Loading\xE2\x80\xA6");
                 else drawCards(&v.albums, nullptr, nullptr, inner, "disc");
             } else {
-                drawTracks(v, inner, true, v.kind != Kind::Album);
+                drawTracks(v, inner, v.kind == Kind::Album, v.kind != Kind::Album);
             }
         }
     } else if (signedIn()) {
@@ -1699,7 +1700,7 @@ void App::drawTracks(View& v, float width, bool numbered, bool showAlbum) {
 
     // Columns: # | title | artist | album | time. Album goes on narrow windows.
     const float rowH = kRowH * k;
-    const float numW = numbered ? 36 * k : 6 * k, timeW = 50 * k;
+    const float numW = numbered ? 36 * k : 28 * k, timeW = 50 * k;
     if (width < 620 * k) showAlbum = false;
     const float rest = width - numW - timeW;
     const float titleW = rest * (showAlbum ? 0.42f : 0.58f);
@@ -1749,19 +1750,19 @@ void App::drawTracks(View& v, float width, bool numbered, bool showAlbum) {
             ImVec2 after = ImGui::GetCursorScreenPos();
             ImGui::PushFont(regular_, kSmall + 0.5f);
             float fy = a.y + (rowH - ImGui::GetFontSize()) / 2;
-            if (numbered) {
-                if (hovered) {
-                    ImGui::SetCursorScreenPos(ImVec2(a.x + 2 * k, a.y + (rowH - 22 * k) / 2));
-                    if (iconButton(playing && player_.status == "playing" ? icon::Pause : icon::Play, nullptr, false, 25)) {
-                        if (playing) togglePlay();
-                        else playIn(v, i);
-                    }
-                } else if (playing) {
-                    dl->AddText(ImVec2(a.x + 10 * k, fy + 1 * k), col(p.accent), icon::Speaker);
-                } else {
-                    std::string n = std::to_string(i + 1);
-                    dl->AddText(ImVec2(a.x + 10 * k, fy), col(p.faint), n.c_str());
+            // A play button while hovered, a speaker if playing, else the
+            // number (albums only).
+            if (hovered) {
+                ImGui::SetCursorScreenPos(ImVec2(a.x + 2 * k, a.y + (rowH - 22 * k) / 2));
+                if (iconButton(playing && player_.status == "playing" ? icon::Pause : icon::Play, nullptr, false, 25)) {
+                    if (playing) togglePlay();
+                    else playIn(v, i);
                 }
+            } else if (playing) {
+                dl->AddText(ImVec2(a.x + 9 * k, fy + 1 * k), col(p.accent), icon::Speaker);
+            } else if (numbered) {
+                std::string n = std::to_string(i + 1);
+                dl->AddText(ImVec2(a.x + 10 * k, fy), col(p.faint), n.c_str());
             }
             float nameW = titleW - 12 * k;
             float nx = a.x + xTitle;
