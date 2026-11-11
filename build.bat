@@ -16,7 +16,7 @@ if not exist build\obj mkdir build\obj
 if not exist build\tests mkdir build\tests
 set CFLAGS=/nologo /O2 /DNDEBUG /utf-8 /W3 /MP /DUNICODE /D_UNICODE /DNOMINMAX /DWIN32_LEAN_AND_MEAN /D_CRT_SECURE_NO_WARNINGS /DIMGUI_DISABLE_DEMO_WINDOWS /DIMGUI_USE_WCHAR32 /Isrc /Ithird_party /Ithird_party\imgui /Ithird_party\imgui\backends
 set CXXFLAGS=%CFLAGS% /std:c++17 /EHsc
-set LIBS=winhttp.lib ws2_32.lib bcrypt.lib crypt32.lib shell32.lib ole32.lib user32.lib advapi32.lib
+set LIBS=windowsapp.lib winhttp.lib ws2_32.lib bcrypt.lib crypt32.lib shell32.lib ole32.lib user32.lib advapi32.lib
 
 echo Building tests...
 cl %CXXFLAGS% /Fobuild\tests\ /Fe:build\tests.exe tests\tests.cpp src\util.cpp src\auth.cpp src\net.cpp src\spotify.cpp src\soloist.cpp /link %LIBS% > build\tests.log 2>&1 || (type build\tests.log & exit /b 1)

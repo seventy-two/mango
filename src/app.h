@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "images.h"
+#include "media.h"
 #include "imgui.h"
 #include "soloist.h"
 #include "spotify.h"
@@ -142,7 +143,6 @@ private:
     void togglePlay();
     void checkLiked(const std::string& uri);
     void setLiked(const std::string& uri, bool liked, const std::string& name);
-    void updateHotkeys();
 
     // Drawing.
     void applyColours();
@@ -173,6 +173,7 @@ private:
     std::shared_ptr<Api> api_;
     std::shared_ptr<Soloist> soloist_;
     std::unique_ptr<ImageCache> images_;
+    std::unique_ptr<MediaSession> media_;
     std::string dir_;
     Config cfg_;
 
@@ -204,7 +205,6 @@ private:
     float seekFrac_ = 0;
     bool volumeDragging_ = false;
     int volumeShown_ = 40;
-    bool hotkeys_ = false;
     std::string lastQueueFor_;
 
     std::string note_;

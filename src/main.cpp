@@ -186,7 +186,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
         break;
-    case WM_HOTKEY:
+    case mango::WM_APP_MEDIA:
         if (app) app->MediaKey(int(wParam));
         return 0;
     case WM_APP_TOGGLE:

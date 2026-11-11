@@ -11,6 +11,7 @@
 #include <fstream>
 
 #include "imgui_internal.h"
+#include "media.h"
 #include "util.h"
 
 namespace mango {
@@ -22,7 +23,6 @@ namespace {
 // Mango's Spotify app (developer dashboard). Not a secret: PKCE needs none.
 constexpr const char* kClientId = "592084482f66443eb7c95a930cb5af24";
 constexpr const char* kDeviceName = "Mango";
-constexpr int kHotPlay = 1, kHotNext = 2, kHotPrev = 3;
 
 // Font sizes, before DPI scaling.
 constexpr float kBody = 14, kSmall = 12.5f, kLabel = 11, kTitle = 16;
@@ -278,6 +278,7 @@ App::App(HWND hwnd, ID3D11Device* device, std::function<void()> wake)
     });
 
     images_ = std::make_unique<ImageCache>(device, wake);
+    if (!_wgetenv(L"MANGO_DEMO")) media_ = std::make_unique<MediaSession>(hwnd);
 
     const wchar_t* local = _wgetenv(L"LOCALAPPDATA");
     std::wstring base = local ? local : L"";
@@ -403,11 +404,6 @@ App::~App() {
         inbox_->items.clear();
     }
     if (cancelSignIn_) *cancelSignIn_ = true;
-    if (hotkeys_) {
-        UnregisterHotKey(hwnd_, kHotPlay);
-        UnregisterHotKey(hwnd_, kHotNext);
-        UnregisterHotKey(hwnd_, kHotPrev);
-    }
     saveConfig();
 }
 
@@ -992,26 +988,17 @@ void App::togglePlay() {
     else soloist_->Play();
 }
 
+// MediaKey handles a button from Windows' media controls (media keys, the
+// volume overlay, kitchensink's Now playing).
 void App::MediaKey(int id) {
-    if (id == kHotPlay) togglePlay();
-    else if (id == kHotNext) soloist_->Next();
-    else if (id == kHotPrev) soloist_->Prev();
-}
-
-// updateHotkeys takes the keyboard's media keys only while Mango has
-// something to play, so other players get them otherwise.
-void App::updateHotkeys() {
-    bool want = player_.loggedIn && player_.active && !player_.item.uri.empty();
-    if (want == hotkeys_) return;
-    hotkeys_ = want;
-    if (want) {
-        RegisterHotKey(hwnd_, kHotPlay, MOD_NOREPEAT, VK_MEDIA_PLAY_PAUSE);
-        RegisterHotKey(hwnd_, kHotNext, MOD_NOREPEAT, VK_MEDIA_NEXT_TRACK);
-        RegisterHotKey(hwnd_, kHotPrev, MOD_NOREPEAT, VK_MEDIA_PREV_TRACK);
-    } else {
-        UnregisterHotKey(hwnd_, kHotPlay);
-        UnregisterHotKey(hwnd_, kHotNext);
-        UnregisterHotKey(hwnd_, kHotPrev);
+    switch (id) {
+    case MediaPlay: soloist_->Play(); break;
+    case MediaPause: soloist_->Pause(); break;
+    case MediaNext: soloist_->Next(); break;
+    case MediaPrevious: soloist_->Prev(); break;
+    case MediaSeek:
+        if (media_) soloist_->Seek(media_->SeekTarget());
+        break;
     }
 }
 
@@ -1092,7 +1079,7 @@ void App::Pump() {
             devices->id.clear();
         }
     }
-    updateHotkeys();
+    if (media_) media_->Update(player_);
 }
 
 bool App::BeforeFrame() {

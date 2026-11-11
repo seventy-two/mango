@@ -49,7 +49,11 @@ others can still be played.
 
 Space play/pause · Ctrl+Left/Right previous/next · Ctrl+Up/Down volume ·
 Ctrl+L search · Ctrl+F filter · Enter play selected · Alt+Left or mouse back
-button: back · F5 reload. Media keys work while Mango has a song loaded.
+button: back · F5 reload.
+
+Mango registers with Windows' media controls (SMTC): what's playing shows
+in the volume overlay and anything reading media sessions (kitchensink's
+Now playing), and the media keys reach it when it's the current player.
 
 ## kitchensink
 
