@@ -100,7 +100,7 @@ public:
     // Show shows or hides the window; activate brings it to the front too.
     void Show(bool shown, bool activate = true);
     // SetDocked: placed against kitchensink's (the launcher's) right edge,
-    // at its height, following it when it moves.
+    // at its height, following it when it moves, and always on top.
     void SetDocked(bool docked);
     bool Shown() const { return cfg_.shown; }
     void MediaKey(int id);

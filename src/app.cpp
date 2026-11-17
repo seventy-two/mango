@@ -489,9 +489,12 @@ void App::SavePlace(const RECT& r) {
     saveConfig();
 }
 
+// SetDocked also keeps the window on top while docked, so it stays in
+// view beside kitchensink when another window is clicked.
 void App::SetDocked(bool docked) {
     docked_ = docked;
     dockedTo_ = RECT{};
+    SetWindowPos(hwnd_, docked ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 }
 
 // dock puts the window against kitchensink's right edge, at its top and
