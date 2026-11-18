@@ -37,10 +37,10 @@ struct Palette {
     ImVec4 bg, card, sidebar, border, text, muted, faint, accent, hover, frame, accentText, warn, bad, mango;
 };
 const Palette kDark = {hex(0x15171C), hex(0x1E2128), hex(0x1A1D23), hex(0x2B2F38), hex(0xE6E8EC), hex(0x8C929D),
-                       hex(0x5C626D), hex(0x5AA8FF), hex(0x262A33), hex(0x22252D), hex(0xFFFFFF), hex(0xD9A23A),
+                       hex(0x5C626D), hex(0xA78BFA), hex(0x262A33), hex(0x22252D), hex(0xFFFFFF), hex(0xD9A23A),
                        hex(0xF8645A), hex(0xF59E2B)};
 const Palette kLight = {hex(0xF2F3F5), hex(0xFFFFFF), hex(0xEAECEF), hex(0xD5D9DF), hex(0x1F2328), hex(0x656D76),
-                        hex(0x9AA1AA), hex(0x0969DA), hex(0xE4E7EB), hex(0xEEF0F3), hex(0xFFFFFF), hex(0x9A6700),
+                        hex(0x9AA1AA), hex(0x8250DF), hex(0xE4E7EB), hex(0xEEF0F3), hex(0xFFFFFF), hex(0x9A6700),
                         hex(0xCF222E), hex(0xD9750B)};
 const Palette* pal = &kDark;
 
