@@ -141,6 +141,9 @@ private:
     void moreSearch(std::shared_ptr<View> v, const char* type);
     void back();
     void reload();
+    // refreshLiked quietly checks Liked Songs for songs liked or unliked
+    // elsewhere (phone, desktop app) and swaps in the new list if it changed.
+    void refreshLiked();
 
     // Playback.
     void playIn(const View& v, int index);
@@ -199,6 +202,8 @@ private:
 
     // Views.
     std::shared_ptr<View> view_;
+    double likedChecked_ = 0;     // GetTickCount64 of the last refreshLiked
+    bool likedRefreshing_ = false;
     std::vector<std::shared_ptr<View>> backStack_;
     std::map<std::string, std::shared_ptr<View>> cache_;
     char search_[256] = {};

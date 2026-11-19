@@ -662,7 +662,11 @@ void App::openKey(const std::string& key) {
 }
 
 void App::openLiked() {
-    if (auto v = cached("liked")) return open(v);
+    if (auto v = cached("liked")) {
+        open(v);
+        if (GetTickCount64() - likedChecked_ > 60 * 1000) refreshLiked();
+        return;
+    }
     auto v = std::make_shared<View>();
     v->kind = Kind::Liked;
     v->key = "liked";
@@ -670,7 +674,65 @@ void App::openLiked() {
     v->kindLabel = "Playlist";
     cache_[v->key] = v;
     open(v);
+    likedChecked_ = double(GetTickCount64());
     loadTracks(v, 0);
+}
+
+void App::refreshLiked() {
+    likedChecked_ = double(GetTickCount64());
+    auto v = cached("liked");
+    if (demo_ || !signedIn() || !v || !v->done || v->loading || likedRefreshing_) return;
+    likedRefreshing_ = true;
+    std::vector<std::string> had;
+    for (size_t i = 0; i < v->tracks.size() && i < 50; i++) had.push_back(v->tracks[i].uri);
+    int hadTotal = v->total;
+    uint64_t gen = v->loadGen;
+    auto api = api_;
+    auto inbox = inbox_;
+    workers_.Run([api, inbox, v, had, hadTotal, gen, this] {
+        Page<Track> page;
+        std::string err;
+        std::vector<Track> all;
+        int total = 0;
+        bool changed = false, ok = api->Liked(0, page, err);
+        if (ok) {
+            total = page.total;
+            changed = total != hadTotal || page.items.size() != had.size();
+            for (size_t i = 0; !changed && i < had.size(); i++) changed = page.items[i].uri != had[i];
+            all = page.items;
+            // Changed: fetch the rest before swapping, so the list doesn't empty.
+            while (changed && ok && page.more && !page.items.empty()) {
+                ok = api->Liked(int(all.size()), page, err);
+                if (ok) all.insert(all.end(), page.items.begin(), page.items.end());
+            }
+        }
+        inbox->Post([this, v, ok, changed, all, total, gen] {
+            likedRefreshing_ = false;
+            if (!ok || !changed || v->loadGen != gen || v->loading) return;
+            std::string selectedUri;
+            if (v->selected >= 0 && v->selected < int(v->tracks.size())) selectedUri = v->tracks[v->selected].uri;
+            noteTracks(all);
+            v->tracks = all;
+            v->total = total;
+            v->filteredN = size_t(-1);
+            v->selected = -1;
+            for (size_t i = 0; !selectedUri.empty() && i < v->tracks.size(); i++)
+                if (v->tracks[i].uri == selectedUri) v->selected = int(i);
+        });
+    });
+    // The heart on what's playing may have changed elsewhere too (checked
+    // without blanking it meanwhile, as checkLiked does).
+    std::string uri = likedUri_;
+    if (uri.empty() || !uriIs(uri, "track")) return;
+    workers_.Run([api, inbox, uri, this] {
+        std::vector<bool> saved;
+        std::string err;
+        if (!api->Saved({uri}, saved, err) || saved.empty()) return;
+        bool yes = saved[0];
+        inbox->Post([this, uri, yes] {
+            if (likedUri_ == uri) likedState_ = yes ? 1 : 0;
+        });
+    });
 }
 
 void App::openPlaylist(const Playlist& p) {
@@ -1171,6 +1233,8 @@ void App::Pump() {
     }
     autoplaying_ = isAutoplay(player_.item.uri);
     if (media_) media_->Update(player_);
+    // Pick up songs liked or unliked elsewhere every few minutes.
+    if (likedChecked_ > 0 && GetTickCount64() - likedChecked_ > 5 * 60 * 1000) refreshLiked();
     // Docked, follow kitchensink if it moves or changes size.
     if (docked_ && IsWindowVisible(hwnd_) && !IsIconic(hwnd_) && GetTickCount64() - dockChecked_ > 500) {
         dockChecked_ = double(GetTickCount64());
